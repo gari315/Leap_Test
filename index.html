@@ -1,199 +1,409 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>英単語学習</title>
-<style>
-body { font-family: sans-serif; text-align: center; padding: 20px; }
-#word { font-size: 32px; margin: 40px 0; }
-button { font-size: 18px; margin: 10px; padding: 10px 20px; }
-.hidden { display: none; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>英単語学習アプリ</title>
+    <style>
+        :root {
+            --primary: #4A90E2;
+            --bg-color: #F5F7FA;
+            --text-main: #333;
+            --text-light: #666;
+            --btn-ok: #2ECC71;
+            --btn-warn: #F1C40F;
+            --btn-err: #E74C3C;
+        }
+        * { box-sizing: border-box; font-family: sans-serif; }
+        
+        /* スマホの画面高さを正確に取得・スクロールのバグを防止 */
+        body {
+            margin: 0; padding: 0; background-color: var(--bg-color);
+            color: var(--text-main); display: flex; flex-direction: column;
+            min-height: 100dvh; overflow-x: hidden;
+        }
+        
+        /* ヘッダーが常に一番上に固定されるように修正 */
+        header {
+            position: sticky; top: 0; z-index: 100;
+            display: flex; justify-content: space-between; padding: 10px;
+            background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            gap: 5px;
+        }
+        header button {
+            flex: 1; padding: 12px 0; border: none;
+            border-radius: 8px; background: #e0e0e0; font-size: 14px;
+            font-weight: bold; cursor: pointer; transition: 0.2s;
+            white-space: nowrap; touch-action: manipulation;
+        }
+        header button.active { background: var(--primary); color: white; }
+        
+        main {
+            flex: 1; padding: 20px; overflow-y: auto;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        
+        .app-area { width: 100%; max-width: 500px; display: none; }
+        .active-area { display: block; }
+        
+        #quiz-area { text-align: center; margin-top: 5vh; }
+        .word-display { font-size: 48px; font-weight: bold; margin-bottom: 20px; word-wrap: break-word; }
+        .meaning-display { font-size: 24px; color: var(--primary); margin-bottom: 30px; min-height: 35px; }
+        
+        .main-btn {
+            width: 100%; padding: 18px; font-size: 18px; font-weight: bold;
+            color: white; background: var(--primary); border: none;
+            border-radius: 10px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 10px; touch-action: manipulation;
+        }
+        
+        .eval-buttons { display: none; gap: 10px; width: 100%; }
+        .eval-btn {
+            flex: 1; padding: 20px; font-size: 24px; border: none;
+            border-radius: 10px; cursor: pointer; color: white; font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); touch-action: manipulation;
+        }
+        .btn-o { background: var(--btn-ok); }
+        .btn-t { background: var(--btn-warn); }
+        .btn-x { background: var(--btn-err); }
+
+        .section-card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .section-card h2 { margin-top: 0; font-size: 18px; border-bottom: 2px solid var(--bg-color); padding-bottom: 8px; margin-bottom: 15px;}
+        .stat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+        .stat-row:last-child { border-bottom: none; }
+        ol { margin: 0; padding-left: 20px; }
+        li { padding: 5px 0; border-bottom: 1px solid #eee; }
+        
+        input[type="file"] {
+            display: block; width: 100%; margin-bottom: 15px;
+            padding: 10px; background: var(--bg-color); border-radius: 5px;
+        }
+    </style>
 </head>
 <body>
 
-<h1>英単語学習</h1>
+    <header>
+        <button id="nav-quiz" class="active" onclick="switchMode('quiz')">出題</button>
+        <button id="nav-review" onclick="switchMode('review')">復習</button>
+        <button id="nav-analysis" onclick="switchMode('analysis')">分析</button>
+        <button id="nav-settings" onclick="switchMode('settings')">設定</button>
+    </header>
 
-<input type="file" id="fileInput" accept=".csv"><br><br>
+    <main>
+        <div id="quiz-area" class="app-area active-area">
+            <div id="word" class="word-display">Ready</div>
+            <div id="meaning" class="meaning-display"></div>
+            
+            <button id="btn-show-answer" class="main-btn" onclick="showAnswer()">答えを見る</button>
+            
+            <div id="eval-buttons" class="eval-buttons">
+                <button class="eval-btn btn-o" onclick="recordEval('◎')">◎</button>
+                <button class="eval-btn btn-t" onclick="recordEval('△')">△</button>
+                <button class="eval-btn btn-x" onclick="recordEval('×')">×</button>
+            </div>
+        </div>
 
-<div id="main" class="hidden">
-  <div id="word"></div>
-  <div id="meaning" class="hidden"></div>
+        <div id="analysis-area" class="app-area">
+            <div class="section-card">
+                <h2>タグ別正答率</h2>
+                <div id="stats-tag">データがありません</div>
+            </div>
+            <div class="section-card">
+                <h2>品詞(POS)別正答率</h2>
+                <div id="stats-pos">データがありません</div>
+            </div>
+            <div class="section-card">
+                <h2>苦手単語ランキング (Top 10)</h2>
+                <ol id="stats-weak">データがありません</ol>
+            </div>
+        </div>
 
-  <button onclick="showMeaning()">答えを見る</button>
+        <div id="settings-area" class="app-area">
+            <div class="section-card">
+                <h2>CSVデータの読み込み</h2>
+                <p style="font-size: 14px; color: var(--text-light);">
+                    「単語, 意味, 品詞, タグ」の順のCSVを選択してください。<br>（ヘッダー行なしでも読み込めます）
+                </p>
+                <input type="file" id="csv-upload" accept=".csv" onchange="handleFileUpload(event)">
+                <div id="upload-status" style="font-weight:bold; color:var(--primary); margin-top: 10px;"></div>
+            </div>
 
-  <div id="buttons" class="hidden">
-    <button onclick="answer('◎')">◎</button>
-    <button onclick="answer('△')">△</button>
-    <button onclick="answer('×')">×</button>
-  </div>
+            <div class="section-card">
+                <h2>データの初期化</h2>
+                <p style="font-size: 14px; color: var(--text-light);">バグが起きた場合や、最初からやり直したい場合はここを押してください。</p>
+                <button onclick="clearData()" style="width:100%; padding:15px; background:var(--text-light); color:white; border:none; border-radius:8px; font-size:16px; font-weight:bold; cursor:pointer;">学習履歴を完全リセット</button>
+            </div>
+        </div>
+    </main>
 
-  <br>
-  <button onclick="showAnalysis()">分析</button>
-  <button onclick="toggleReview()">復習モード切替</button>
-</div>
+    <script>
+        // サンプルデータ
+        const defaultCsvData = `word,meaning,pos,tag
+abandon,捨てる,verb,行動
+maintain,維持する,verb,抽象
+absolute,絶対的な,adjective,抽象
+eager,熱望して,adjective,感情`;
 
-<div id="analysis" class="hidden"></div>
+        let allWords = [];
+        let currentWordPool = [];
+        let currentWord = null;
+        let startTime = 0;
+        let history = [];
 
-<script>
-let words = [];
-let current;
-let startTime;
-let reviewMode = false;
+        // 履歴の安全な読み込み（エラーが起きても止まらないようにする）
+        try {
+            const saved = localStorage.getItem('vocabHistory');
+            if (saved) {
+                history = JSON.parse(saved);
+            }
+        } catch (e) {
+            console.error("履歴データの破損を検知しました。リセットします。");
+            history = [];
+            localStorage.removeItem('vocabHistory');
+        }
 
-// ===== CSV読み込み =====
-document.getElementById("fileInput").addEventListener("change", function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
+        // CSV解析
+        function parseCSV(csv) {
+            if (!csv) return [];
+            const lines = csv.trim().split('\n');
+            let data = [];
+            
+            let startIndex = (lines[0] && lines[0].toLowerCase().includes('word')) ? 1 : 0;
 
-  const reader = new FileReader();
-  reader.onload = function(event) {
-    parseCSV(event.target.result);
-  };
-  reader.readAsText(file);
-});
+            for (let i = startIndex; i < lines.length; i++) {
+                if (!lines[i].trim()) continue;
+                const values = lines[i].split(',');
+                if (values.length >= 2) { // 最低限 単語と意味 があればOKとする
+                    data.push({
+                        word: values[0] ? values[0].trim() : '',
+                        meaning: values[1] ? values[1].trim() : '',
+                        pos: values[2] ? values[2].trim() : '不明',
+                        tag: values[3] ? values[3].trim() : '未分類'
+                    });
+                }
+            }
+            return data;
+        }
 
-function parseCSV(text) {
-  const lines = text.trim().split("\n");
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
 
-  // ヘッダー確認
-  const header = lines[0].split(",");
-  if (header.length < 4) {
-    alert("CSV形式が不正です");
-    return;
-  }
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const parsedData = parseCSV(text);
+                
+                if (parsedData.length > 0) {
+                    allWords = parsedData;
+                    document.getElementById('upload-status').innerText = `✅ ${allWords.length}件の単語を読み込みました！`;
+                    document.getElementById('upload-status').style.color = 'var(--primary)';
+                    setTimeout(() => { switchMode('quiz'); }, 1000);
+                } else {
+                    document.getElementById('upload-status').innerText = '❌ データを読み込めませんでした。';
+                    document.getElementById('upload-status').style.color = 'var(--btn-err)';
+                }
+            };
+            reader.readAsText(file);
+        }
 
-  words = [];
+        allWords = parseCSV(defaultCsvData);
 
-  for (let i = 1; i < lines.length; i++) {
-    const parts = lines[i].split(",");
-    if (parts.length < 4) continue;
+        // タブ切り替え処理
+        function switchMode(mode) {
+            try {
+                ['quiz', 'review', 'analysis', 'settings'].forEach(m => {
+                    const navBtn = document.getElementById('nav-' + m);
+                    const areaDiv = document.getElementById(m + '-area');
+                    if(navBtn) navBtn.classList.remove('active');
+                    if(areaDiv) areaDiv.classList.remove('active-area');
+                });
 
-    const [word, meaning, pos, tag] = parts;
-    words.push({ word, meaning, pos, tag });
-  }
+                document.getElementById('nav-' + mode).classList.add('active');
+                document.getElementById(mode + '-area').classList.add('active-area');
 
-  if (words.length === 0) {
-    alert("有効なデータがありません");
-    return;
-  }
+                if (mode === 'quiz') {
+                    currentWordPool = [...allWords];
+                    nextWord();
+                } else if (mode === 'review') {
+                    setupReviewMode();
+                } else if (mode === 'analysis') {
+                    updateAnalysis();
+                }
+            } catch(e) {
+                console.error(e);
+                alert('画面切り替えでエラーが発生しました。設定からリセットをお試しください。');
+            }
+        }
 
-  document.getElementById("main").classList.remove("hidden");
-  nextWord();
-}
+        // 復習モード
+        function setupReviewMode() {
+            if (history.length === 0) {
+                alert("学習履歴がありません。まずは通常出題を行ってください。");
+                switchMode('quiz');
+                return;
+            }
 
-// ===== 出題 =====
-function nextWord() {
-  let pool = words;
+            const latestEval = {};
+            history.forEach(record => {
+                latestEval[record.word] = record.eval;
+            });
+            
+            const reviewWords = Object.keys(latestEval).filter(word => latestEval[word] === '△' || latestEval[word] === '×');
+            currentWordPool = allWords.filter(w => reviewWords.includes(w.word));
 
-  if (reviewMode) {
-    const data = getData();
-    pool = words.filter(w => {
-      const records = data.filter(d => d.word === w.word);
-      return records.some(r => r.eval !== '◎');
-    });
-    if (pool.length === 0) pool = words;
-  }
+            if (currentWordPool.length === 0) {
+                alert("復習する単語がありません（すべて◎です！）");
+                switchMode('quiz');
+                return;
+            }
+            nextWord();
+        }
 
-  current = pool[Math.floor(Math.random() * pool.length)];
-  document.getElementById("word").innerText = current.word;
-  document.getElementById("meaning").classList.add("hidden");
-  document.getElementById("buttons").classList.add("hidden");
-  startTime = Date.now();
-}
+        // 次の問題
+        function nextWord() {
+            if (currentWordPool.length === 0) {
+                currentWordPool = [...allWords];
+            }
+            
+            // データが完全に空の場合のガード
+            if (currentWordPool.length === 0) {
+                document.getElementById('word').innerText = 'データがありません';
+                document.getElementById('meaning').innerText = '';
+                document.getElementById('btn-show-answer').style.display = 'none';
+                document.getElementById('eval-buttons').style.display = 'none';
+                return;
+            }
 
-// ===== 表示 =====
-function showMeaning() {
-  document.getElementById("meaning").innerText = current.meaning;
-  document.getElementById("meaning").classList.remove("hidden");
-  document.getElementById("buttons").classList.remove("hidden");
-}
+            const randomIndex = Math.floor(Math.random() * currentWordPool.length);
+            currentWord = currentWordPool[randomIndex];
+            
+            document.getElementById('word').innerText = currentWord.word;
+            document.getElementById('meaning').innerText = '';
+            
+            document.getElementById('btn-show-answer').style.display = 'block';
+            document.getElementById('eval-buttons').style.display = 'none';
+            
+            startTime = Date.now();
+        }
 
-// ===== 記録 =====
-function answer(evalResult) {
-  const time = (Date.now() - startTime) / 1000;
+        // 答えを見る
+        function showAnswer() {
+            if (!currentWord) return;
+            document.getElementById('meaning').innerText = currentWord.meaning;
+            document.getElementById('btn-show-answer').style.display = 'none';
+            document.getElementById('eval-buttons').style.display = 'flex';
+        }
 
-  const record = {
-    word: current.word,
-    eval: evalResult,
-    time: time,
-    pos: current.pos,
-    tag: current.tag
-  };
+        // 評価を記録
+        function recordEval(evaluation) {
+            if (!currentWord) return;
+            const timeTaken = (Date.now() - startTime) / 1000;
+            
+            const record = {
+                word: currentWord.word,
+                eval: evaluation,
+                time: timeTaken,
+                pos: currentWord.pos,
+                tag: currentWord.tag,
+                timestamp: Date.now()
+            };
+            
+            history.push(record);
+            localStorage.setItem('vocabHistory', JSON.stringify(history));
+            
+            nextWord();
+        }
 
-  const data = getData();
-  data.push(record);
-  localStorage.setItem("records", JSON.stringify(data));
+        // 正答率計算
+        function calculateAccuracy(records) {
+            if (records.length === 0) return 0;
+            let score = 0;
+            records.forEach(r => {
+                if (r.eval === '◎') score += 1;
+                else if (r.eval === '△') score += 0.5;
+            });
+            return Math.round((score / records.length) * 100);
+        }
 
-  nextWord();
-}
+        // 分析更新
+        function updateAnalysis() {
+            if (history.length === 0) {
+                document.getElementById('stats-tag').innerText = 'データがありません';
+                document.getElementById('stats-pos').innerText = 'データがありません';
+                document.getElementById('stats-weak').innerHTML = 'データがありません';
+                return;
+            }
 
-function getData() {
-  return JSON.parse(localStorage.getItem("records") || "[]");
-}
+            const tagData = {};
+            const posData = {};
+            const wordData = {};
 
-// ===== 分析 =====
-function showAnalysis() {
-  const data = getData();
-  let html = "<h2>分析</h2>";
+            history.forEach(r => {
+                if (!tagData[r.tag]) tagData[r.tag] = [];
+                tagData[r.tag].push(r);
+                
+                if (!posData[r.pos]) posData[r.pos] = [];
+                posData[r.pos].push(r);
 
-  function calc(groupKey) {
-    const groups = {};
-    data.forEach(d => {
-      if (!groups[d[groupKey]]) groups[d[groupKey]] = [];
-      groups[d[groupKey]].push(d);
-    });
+                if (!wordData[r.word]) wordData[r.word] = { count: 0, score: 0, time: 0 };
+                wordData[r.word].count++;
+                wordData[r.word].time += r.time;
+                if (r.eval === '◎') wordData[r.word].score += 1;
+                else if (r.eval === '△') wordData[r.word].score += 0.5;
+            });
 
-    for (let key in groups) {
-      const arr = groups[key];
-      let score = arr.reduce((sum, d) => {
-        if (d.eval === '◎') return sum + 1;
-        if (d.eval === '△') return sum + 0.5;
-        return sum;
-      }, 0);
-      let rate = (score / arr.length * 100).toFixed(1);
-      html += `${key}: ${rate}%<br>`;
-    }
-  }
+            const renderStats = (dataObj, containerId) => {
+                const container = document.getElementById(containerId);
+                container.innerHTML = '';
+                for (const [key, records] of Object.entries(dataObj)) {
+                    if(!key || key === "undefined") continue;
+                    const acc = calculateAccuracy(records);
+                    container.innerHTML += `<div class="stat-row"><span>${key}</span><span>${acc}%</span></div>`;
+                }
+            };
 
-  html += "<h3>タグ別</h3>";
-  calc("tag");
+            renderStats(tagData, 'stats-tag');
+            renderStats(posData, 'stats-pos');
 
-  html += "<h3>品詞別</h3>";
-  calc("pos");
+            const ranking = Object.keys(wordData).map(word => {
+                const data = wordData[word];
+                return {
+                    word: word,
+                    avgScore: data.score / data.count,
+                    avgTime: data.time / data.count
+                };
+            });
 
-  const wordStats = {};
-  data.forEach(d => {
-    if (!wordStats[d.word]) wordStats[d.word] = { score: 0, count: 0, time: 0 };
-    if (d.eval === '◎') wordStats[d.word].score += 1;
-    if (d.eval === '△') wordStats[d.word].score += 0.5;
-    wordStats[d.word].count += 1;
-    wordStats[d.word].time += d.time;
-  });
+            ranking.sort((a, b) => {
+                if (a.avgScore !== b.avgScore) return a.avgScore - b.avgScore;
+                return b.avgTime - a.avgTime;
+            });
 
-  const ranking = Object.entries(wordStats).map(([word, v]) => ({
-    word,
-    avgScore: v.score / v.count,
-    avgTime: v.time / v.count
-  })).sort((a, b) => a.avgScore - b.avgScore || b.avgTime - a.avgTime).slice(0, 10);
+            const top10 = ranking.slice(0, 10);
+            const weakContainer = document.getElementById('stats-weak');
+            weakContainer.innerHTML = '';
+            top10.forEach(item => {
+                const meaning = allWords.find(w => w.word === item.word)?.meaning || '';
+                weakContainer.innerHTML += `<li><strong>${item.word}</strong> (${meaning}) <br> <small style="color:#666;">正答率: ${Math.round(item.avgScore * 100)}% / 平均回答: ${item.avgTime.toFixed(1)}秒</small></li>`;
+            });
+        }
 
-  html += "<h3>苦手単語</h3>";
-  ranking.forEach(r => {
-    html += `${r.word} (score:${r.avgScore.toFixed(2)}, time:${r.avgTime.toFixed(1)}s)<br>`;
-  });
+        // リセット
+        function clearData() {
+            if(confirm('学習履歴をすべて削除しますか？\n（エラーが直らない場合は「OK」を押してください）')) {
+                localStorage.removeItem('vocabHistory');
+                history = [];
+                alert('履歴を削除しました。');
+                switchMode('quiz');
+            }
+        }
 
-  document.getElementById("analysis").innerHTML = html;
-  document.getElementById("analysis").classList.remove("hidden");
-}
-
-// ===== 復習モード =====
-function toggleReview() {
-  reviewMode = !reviewMode;
-  alert("復習モード: " + (reviewMode ? "ON" : "OFF"));
-  nextWord();
-}
-</script>
-
+        // 初期起動
+        // エラー回避のため少し遅延させてUI構築後に実行
+        window.onload = () => {
+            switchMode('quiz');
+        };
+    </script>
 </body>
 </html>
