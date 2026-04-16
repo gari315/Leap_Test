@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>英単語学習アプリ</title>
+    <style>
+        :root {
+            --primary: #4A90E2;
+            --bg-color: #F5F7FA;
+            --text-main: #333;
+            --text-light: #666;
+            --btn-ok: #2ECC71;
+            --btn-warn: #F1C40F;
+            --btn-err: #E74C3C;
+        }
+        * { box-sizing: border-box; font-family: sans-serif; }
+        body {
+            margin: 0; padding: 0; background-color: var(--bg-color);
+            color: var(--text-main); display: flex; flex-direction: column;
+            height: 100vh; overflow: hidden;
+        }
+        header {
+            display: flex; justify-content: space-around; padding: 10px;
+            background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        header button {
+            flex: 1; margin: 0 5px; padding: 12px 5px; border: none;
+            border-radius: 8px; background: #e0e0e0; font-size: 14px;
+            font-weight: bold; cursor: pointer; transition: 0.2s;
+        }
+        header button.active { background: var(--primary); color: white; }
+        
+        main {
+            flex: 1; padding: 20px; overflow-y: auto;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        
+        /* Quiz Area */
+        #quiz-area { width: 100%; max-width: 400px; text-align: center; margin-top: 10vh; }
+        .word-display { font-size: 48px; font-weight: bold; margin-bottom: 20px; word-wrap: break-word; }
+        .meaning-display { font-size: 24px; color: var(--primary); margin-bottom: 30px; min-height: 30px; }
+        
+        .main-btn {
+            width: 100%; padding: 15px; font-size: 18px; font-weight: bold;
+            color: white; background: var(--primary); border: none;
+            border-radius: 10px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .eval-buttons { display: none; gap: 10px; width: 100%; }
+        .eval-btn {
+            flex: 1; padding: 15px; font-size: 24px; border: none;
+            border-radius: 10px; cursor: pointer; color: white; font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .btn-o { background: var(--btn-ok); }
+        .btn-t { background: var(--btn-warn); }
+        .btn-x { background: var(--btn-err); }
+
+        /* Analysis Area */
+        #analysis-area { width: 100%; max-width: 500px; display: none; }
+        .analysis-section { background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .analysis-section h2 { margin-top: 0; font-size: 18px; border-bottom: 2px solid var(--bg-color); padding-bottom: 5px; }
+        .stat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+        .stat-row:last-child { border-bottom: none; }
+        ol { margin: 0; padding-left: 20px; }
+        li { padding: 5px 0; border-bottom: 1px solid #eee; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <button id="nav-quiz" class="active" onclick="switchMode('quiz')">通常出題</button>
+        <button id="nav-review" onclick="switchMode('review')">復習モード</button>
+        <button id="nav-analysis" onclick="switchMode('analysis')">分析画面</button>
+    </header>
+
+    <main>
+        <div id="quiz-area">
+            <div id="word" class="word-display">Ready</div>
+            <div id="meaning" class="meaning-display"></div>
+            
+            <button id="btn-show-answer" class="main-btn" onclick="showAnswer()">答えを見る</button>
+            
+            <div id="eval-buttons" class="eval-buttons">
+                <button class="eval-btn btn-o" onclick="recordEval('◎')">◎</button>
+                <button class="eval-btn btn-t" onclick="recordEval('△')">△</button>
+                <button class="eval-btn btn-x" onclick="recordEval('×')">×</button>
+            </div>
+        </div>
+
+        <div id="analysis-area">
+            <div class="analysis-section">
+                <h2>タグ別正答率</h2>
+                <div id="stats-tag">データがありません</div>
+            </div>
+            <div class="analysis-section">
+                <h2>品詞(POS)別正答率</h2>
+                <div id="stats-pos">データがありません</div>
+            </div>
+            <div class="analysis-section">
+                <h2>苦手単語ランキング (Top 10)</h2>
+                <ol id="stats-weak">データがありません</ol>
+            </div>
+            <button onclick="clearData()" style="width:100%; padding:10px; background:#ccc; border:none; border-radius:5px; margin-top:20px;">学習履歴をリセット</button>
+        </div>
+    </main>
+
+    <script>
+        // --- 1. データ定義 (CSV形式) ---
+        const csvData = `word,meaning,pos,tag
+abandon,捨てる,verb,行動
+maintain,維持する,verb,抽象
+absolute,絶対的な,adjective,抽象
+eager,熱望して,adjective,感情
+frequently,頻繁に,adverb,時間
+cat,猫,noun,動物
+dog,犬,noun,動物
+run,走る,verb,行動
+happy,幸せな,adjective,感情
+quickly,素早く,adverb,行動
+concept,概念,noun,抽象
+ignore,無視する,verb,行動`;
+
+        // --- 2. 初期化と変数 ---
+        let allWords = [];
+        let currentWordPool = [];
+        let currentWord = null;
+        let startTime = 0;
+        let history = JSON.parse(localStorage.getItem('vocabHistory')) || [];
+
+        // CSVパース
+        function parseCSV(csv) {
+            const lines = csv.trim().split('\n');
+            const headers = lines[0].split(',');
+            return lines.slice(1).map(line => {
+                const values = line.split(',');
+                return headers.reduce((obj, header, index) => {
+                    obj[header.trim()] = values[index].trim();
+                    return obj;
+                }, {});
+            });
+        }
+
+        allWords = parseCSV(csvData);
+
+        // --- 3. クイズ機能 ---
+        function switchMode(mode) {
+            document.getElementById('nav-quiz').classList.remove('active');
+            document.getElementById('nav-review').classList.remove('active');
+            document.getElementById('nav-analysis').classList.remove('active');
+            
+            document.getElementById('quiz-area').style.display = 'none';
+            document.getElementById('analysis-area').style.display = 'none';
+
+            if (mode === 'quiz') {
+                document.getElementById('nav-quiz').classList.add('active');
+                document.getElementById('quiz-area').style.display = 'block';
+                currentWordPool = [...allWords];
+                nextWord();
+            } else if (mode === 'review') {
+                document.getElementById('nav-review').classList.add('active');
+                document.getElementById('quiz-area').style.display = 'block';
+                setupReviewMode();
+            } else if (mode === 'analysis') {
+                document.getElementById('nav-analysis').classList.add('active');
+                document.getElementById('analysis-area').style.display = 'block';
+                updateAnalysis();
+            }
+        }
+
+        function setupReviewMode() {
+            // 履歴から最後に回答した評価が△か×の単語を抽出
+            const latestEval = {};
+            history.forEach(record => {
+                latestEval[record.word] = record.eval;
+            });
+            
+            const reviewWords = Object.keys(latestEval).filter(word => latestEval[word] === '△' || latestEval[word] === '×');
+            currentWordPool = allWords.filter(w => reviewWords.includes(w.word));
+
+            if (currentWordPool.length === 0) {
+                alert("復習する単語がありません（すべて◎か、まだ学習していません）");
+                switchMode('quiz');
+                return;
+            }
+            nextWord();
+        }
+
+        function nextWord() {
+            if (currentWordPool.length === 0) currentWordPool = [...allWords]; // 全問終わったらリセット
+            const randomIndex = Math.floor(Math.random() * currentWordPool.length);
+            currentWord = currentWordPool[randomIndex];
+            
+            document.getElementById('word').innerText = currentWord.word;
+            document.getElementById('meaning').innerText = '';
+            
+            document.getElementById('btn-show-answer').style.display = 'block';
+            document.getElementById('eval-buttons').style.display = 'none';
+            
+            startTime = Date.now();
+        }
+
+        function showAnswer() {
+            document.getElementById('meaning').innerText = currentWord.meaning;
+            document.getElementById('btn-show-answer').style.display = 'none';
+            document.getElementById('eval-buttons').style.display = 'flex';
+        }
+
+        function recordEval(evaluation) {
+            const timeTaken = (Date.now() - startTime) / 1000; // 秒に変換
+            
+            const record = {
+                word: currentWord.word,
+                eval: evaluation,
+                time: timeTaken,
+                pos: currentWord.pos,
+                tag: currentWord.tag,
+                timestamp: Date.now()
+            };
+            
+            history.push(record);
+            localStorage.setItem('vocabHistory', JSON.stringify(history));
+            
+            nextWord();
+        }
+
+        // --- 4. 分析機能 ---
+        function calculateAccuracy(records) {
+            if (records.length === 0) return 0;
+            let score = 0;
+            records.forEach(r => {
+                if (r.eval === '◎') score += 1;
+                else if (r.eval === '△') score += 0.5;
+            });
+            return Math.round((score / records.length) * 100);
+        }
+
+        function updateAnalysis() {
+            if (history.length === 0) return;
+
+            // 分類用データ構築
+            const tagData = {};
+            const posData = {};
+            const wordData = {};
+
+            history.forEach(r => {
+                // タグ別
+                if (!tagData[r.tag]) tagData[r.tag] = [];
+                tagData[r.tag].push(r);
+                
+                // 品詞別
+                if (!posData[r.pos]) posData[r.pos] = [];
+                posData[r.pos].push(r);
+
+                // 単語別（苦手ランキング用）
+                if (!wordData[r.word]) wordData[r.word] = { count: 0, score: 0, time: 0 };
+                wordData[r.word].count++;
+                wordData[r.word].time += r.time;
+                if (r.eval === '◎') wordData[r.word].score += 1;
+                else if (r.eval === '△') wordData[r.word].score += 0.5;
+            });
+
+            // 描画関数
+            const renderStats = (dataObj, containerId) => {
+                const container = document.getElementById(containerId);
+                container.innerHTML = '';
+                for (const [key, records] of Object.entries(dataObj)) {
+                    const acc = calculateAccuracy(records);
+                    container.innerHTML += `<div class="stat-row"><span>${key}</span><span>${acc}%</span></div>`;
+                }
+            };
+
+            renderStats(tagData, 'stats-tag');
+            renderStats(posData, 'stats-pos');
+
+            // 苦手ランキングの計算と描画
+            const ranking = Object.keys(wordData).map(word => {
+                const data = wordData[word];
+                return {
+                    word: word,
+                    avgScore: data.score / data.count, // 0.0 ~ 1.0 (低いほど苦手)
+                    avgTime: data.time / data.count    // 秒 (長いほど苦手)
+                };
+            });
+
+            // ソート: 1. スコアが低い順(昇順), 2. 回答時間が長い順(降順)
+            ranking.sort((a, b) => {
+                if (a.avgScore !== b.avgScore) return a.avgScore - b.avgScore;
+                return b.avgTime - a.avgTime;
+            });
+
+            const top10 = ranking.slice(0, 10);
+            const weakContainer = document.getElementById('stats-weak');
+            weakContainer.innerHTML = '';
+            top10.forEach(item => {
+                const meaning = allWords.find(w => w.word === item.word)?.meaning || '';
+                weakContainer.innerHTML += `<li><strong>${item.word}</strong> (${meaning}) <br> <small style="color:#666;">正答率: ${Math.round(item.avgScore * 100)}% / 平均回答: ${item.avgTime.toFixed(1)}秒</small></li>`;
+            });
+        }
+
+        function clearData() {
+            if(confirm('学習履歴をすべて削除しますか？')) {
+                localStorage.removeItem('vocabHistory');
+                history = [];
+                alert('削除しました。');
+                switchMode('quiz');
+            }
+        }
+
+        // 初期起動
+        switchMode('quiz');
+
+    </script>
+</body>
+</html>
